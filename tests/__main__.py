@@ -11,6 +11,7 @@ import tests.edf
 import tests.fp
 import tests.binpack
 import tests.locking
+import tests.locking_overhead
 import tests.global_locking_analysis
 import tests.sim
 import tests.overheads
@@ -28,6 +29,7 @@ suite = unittest.TestSuite(
       tests.fp,
       tests.binpack,
       tests.locking,
+      tests.locking_overhead,
       tests.global_locking_analysis,
       tests.sim,
       tests.overheads,
