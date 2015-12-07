@@ -1,4 +1,5 @@
 from schedcat.locking.model import Unordered
+import schedcat.model.tasks as tasks
 import schedcat.sched.fp as fp
 
 # Store the spinlock associated to the resources
@@ -35,61 +36,28 @@ def charge_spinlock_overheads(tasks):
         t.cost += extra_wcet
     return tasks
 
-
-def save_costs(taskset):
-    """ Save the task cost into another attribute """
-    for t in taskset:
-        t.saved_cost = t.cost
-
-def restore_costs(taskset):
-    """ Restore the task cost from another attribute """
-    for t in taskset:
-        t.cost = t.saved_cost
-
-
-def init_response_time(taskset):
-    """ Initialize the 'previous_response_time' """
-    for t in taskset:
-        t.previous_response_time = t.response_time
-
-def update_response_time(taskset):
-    """ Update the 'previous_response_time'
-    Return True if at least one response_time has been changed
+def iter_partitions_ts(taskset):
     """
-    updated = False
+    Generate a Taskset for every partition.
+    """
+    partitions = {}
     for t in taskset:
-        if t.previous_response_time != t.response_time:
-            t.previous_response_time = t.response_time
-            updated = True
-    return updated
+        if t.partition not in partitions:
+            partitions[t.partition] = []
+        partitions[t.partition].append(t)
+    for p in partitions.itervalues():
+        yield tasks.TaskSystem(p)
 
+def is_schedulable(taskset, lock=default_spinlock):
+    """ Test if the taskset is schedulable, considering lock overheads.
 
-def stable_schedule(ts, cpus, lock=default_spinlock, max_iteration=1000, is_schedulable=fp.is_schedulable):
-    """ Try to converge to a stable schedule for the taskset (considering locking bounds)
-
-    Multiple bounds (with different spinlock types) is not supported yet.
     The lock provided will be used to apply the bounds.
+    Multiple bounds (with different spinlock types) are not supported.
     """
-    taskset = ts.copy()
-    save_costs(taskset)
-    init_response_time(taskset)
-
-    iteration = 0
-    fixed_point_reached = False
-    while not fixed_point_reached:
-
-        # restore and update costs
-        restore_costs(taskset)
-        lock.apply_bounds(taskset)
-
-        # compute and update response_time
-        if not is_schedulable(cpus, taskset):
-            break
-        fixed_point_reached = not update_response_time(taskset)
-
-        # next iteration
-        iteration += 1
-        if iteration > max_iteration:
-            raise Exception("MaxIteration reached")
-
-    return fixed_point_reached, taskset
+    taskset = charge_spinlock_overheads(taskset)
+    lock.apply_bounds(taskset)
+    cpu_per_partition = 1
+    for ts in iter_partitions_ts(taskset):
+        if not fp.is_schedulable(cpu_per_partition, ts):
+            return False
+    return True

@@ -5,54 +5,83 @@ import unittest
 import schedcat.model.tasks as tasks
 import schedcat.model.resources as resources
 import schedcat.overheads.simple_locking as simple_locking
-import schedcat.sched.edf as edf
-
 import schedcat.locking.bounds as bounds
-
 import schedcat.locking.model as lmodel
 
-from schedcat.sched.fp import is_schedulable
 
 class LockingWithOverhead(unittest.TestCase):
     def setUp(self):
-        duration = 500
-        period = 700
-        self.ts = tasks.TaskSystem([
-            tasks.SporadicTask(duration, period),
-            tasks.SporadicTask(duration, period),
-            tasks.SporadicTask(duration, period),
-            ])
+        """
+        Initilize a dict of SpinLocks with different overheads.
+        """
+        self.lock = {
+            'optimispinlock': lmodel.Unordered(79),
+            'spinlock': lmodel.Unordered(118),
+            'mcslock': lmodel.Fifo(148),
+            'ticketlock': lmodel.Fifo(179),
+            'prioritylock': lmodel.Priority_Unordered(193),
+        }
 
-        resources.initialize_resource_model(self.ts)
-        # Assumes taskset has already been sorted and ID'd in priority order.
-        bounds.assign_fp_preemption_levels(self.ts)
+    def binary_test_function(self, period):
+        """
+        Test if the generated Taskset of a given period is schedulable.
 
-
-        # tasks resource duration
-        self.ts[0].resmodel[0].add_request(20)
-        self.ts[1].resmodel[0].add_request(20)
-        self.ts[2].resmodel[0].add_request(20)
-
-        # put all tasks in the same partition (global scheduling)
-        for i, t in enumerate(self.ts):
-            t.partition = 0
-            t.response_time = t.cost
-
+        Uses the rta analysis.
+        """
+        taskset = generate_taskset(period)
+        return simple_locking.is_schedulable(taskset)
 
     def test_schedulability(self):
-        cpus = 3
+        results = []
+        for name, lock in self.lock.iteritems():
+            simple_locking.default_spinlock = lock
+            best_period = binary_search(self.binary_test_function)
+            results.append( (name, best_period) )
 
-        # Example of lock overheads
-        spinlock = lmodel.Unordered(60)
-        mcslock = lmodel.Fifo(94)
-        ticketlock = lmodel.Fifo(74)
-        prioritylock = lmodel.Priority_Unordered(127)
+        # Display the results (debugging)
+        results = sorted(results, key=lambda (_,x):x)
+        for name, score in results:
+            print(name + ': ' + str(score))
 
-        mylock = mcslock
 
-        simple_locking.protect_resource_with(0, mylock)
+def generate_taskset(period):
+    """
+    Generate a Taskset with a given period for every task
+    """
+    duration = 500
+    ts = tasks.TaskSystem([
+        tasks.SporadicTask(duration, period),
+        tasks.SporadicTask(duration, period),
+        tasks.SporadicTask(duration, period),
+        ])
 
-        self.ts = simple_locking.charge_spinlock_overheads(self.ts)
-        fixed_point_reached, new_ts = simple_locking.stable_schedule(self.ts, cpus, mylock)
+    resources.initialize_resource_model(ts)
+    # Assumes taskset has already been sorted and ID'd in priority order.
+    bounds.assign_fp_preemption_levels(ts)
 
-        self.assertTrue(fixed_point_reached)
+    # tasks resource duration
+    for _ in range(10):
+        ts[0].resmodel[0].add_request(50)
+    ts[1].resmodel[0].add_request(50)
+    ts[2].resmodel[0].add_request(50)
+
+    # Set one task per partition (and one partition per core)
+    for i, t in enumerate(ts):
+        t.partition = i
+        t.response_time = t.period
+    return ts
+
+def binary_search(test_function, lo=1, hi=100000):
+    """
+    Compute the smallest value satisfying the test_function
+
+    It uses a binary search approach.
+    Search between lo and hi values.
+    """
+    while lo < hi:
+        mid = (lo+hi)//2
+        if not test_function(mid):
+            lo = mid+1
+        else:
+            hi = mid
+    return lo

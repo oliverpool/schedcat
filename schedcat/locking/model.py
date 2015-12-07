@@ -1,18 +1,16 @@
 import bounds
 
 class Spinlock(object):
-    def __init__(self, total_overhead=0, critical_overhead=0, apply_bounds_function=None):
-        if not apply_bounds_function:
-            apply_bounds_function = bounds.apply_pfp_lp_unordered_bounds
-        self._apply_bounds = apply_bounds_function
+    def __init__(self, total_overhead=0, critical_overhead=0, apply_lp_bounds_function=None):
+        if not apply_lp_bounds_function:
+            apply_lp_bounds_function = bounds.apply_pfp_lp_unordered_bounds
+        self._apply_lp_bounds = apply_lp_bounds_function
         self.total_overhead = total_overhead
         self.critical_overhead = critical_overhead
 
     def apply_bounds(self, ts):
-        """Apply bounds and increase execution cost"""
-        self._apply_bounds(ts)
-        for _, t in enumerate(ts):
-            t.cost += t.blocked
+        """Apply LP bounds"""
+        self._apply_lp_bounds(ts)
 
 
 class Unordered(Spinlock):
