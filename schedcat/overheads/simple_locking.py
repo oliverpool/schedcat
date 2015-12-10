@@ -48,12 +48,14 @@ def iter_partitions_ts(taskset):
     for p in partitions.itervalues():
         yield tasks.TaskSystem(p)
 
-def is_schedulable(taskset, lock=default_spinlock):
+def is_schedulable(taskset, lock=None):
     """ Test if the taskset is schedulable, considering lock overheads.
 
     The lock provided will be used to apply the bounds.
     Multiple bounds (with different spinlock types) are not supported.
     """
+    if lock is None:
+        lock = default_spinlock
     taskset = charge_spinlock_overheads(taskset)
     lock.apply_bounds(taskset)
     cpu_per_partition = 1
