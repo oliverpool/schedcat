@@ -49,16 +49,10 @@ class LockingWithOverhead(unittest.TestCase):
 
     def test_schedulability(self):
         period = 15000
-        duration = 5000
-        cs_duration = 1000
-        cs_number = 1
-        taskset = generate_taskset(period, duration, cs_duration, cs_number)
-        self.assertTrue(simple_locking.is_schedulable(taskset))
-
-
-
         duration = 6000
         cs_duration = 2000
+        cs_number = 1
+        
         # Depending on the lock, the taskset is schedulable or not
         simple_locking.default_spinlock = self.lock['unordered']
         taskset = generate_taskset(period, duration, cs_duration, cs_number)
