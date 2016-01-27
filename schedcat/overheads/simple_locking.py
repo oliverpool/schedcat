@@ -37,9 +37,7 @@ def charge_spinlock_overheads(tasks):
     return tasks
 
 def iter_partitions_ts(taskset):
-    """
-    Generate a Taskset for every partition.
-    """
+    """ Generate a Taskset for every partition. """
     partitions = {}
     for t in taskset:
         if t.partition not in partitions:
@@ -47,6 +45,24 @@ def iter_partitions_ts(taskset):
         partitions[t.partition].append(t)
     for p in partitions.itervalues():
         yield tasks.TaskSystem(p)
+
+def all_partitions_are_schedulable(taskset):
+    """ Check that all the partitions of the tasket are schedulable
+
+    Uses the `blocked term` and computes a new response_time for each task
+    """
+    cpu_per_partition = 1
+    for ts in iter_partitions_ts(taskset):
+        if not fp.is_schedulable(cpu_per_partition, ts):
+            return False
+    return True
+
+def has_new_response_times(taskset):
+    """ Does any response_time differs from the response_time_estimate? """
+    for tsk in taskset:
+        if tsk.response_time_estimate != tsk.response_time:
+            return True
+    return False
 
 def is_schedulable(taskset, lock=None):
     """ Test if the taskset is schedulable, considering lock overheads.
@@ -57,9 +73,30 @@ def is_schedulable(taskset, lock=None):
     if lock is None:
         lock = default_spinlock
     taskset = charge_spinlock_overheads(taskset)
-    lock.apply_bounds(taskset)
-    cpu_per_partition = 1
-    for ts in iter_partitions_ts(taskset):
-        if not fp.is_schedulable(cpu_per_partition, ts):
-            return False
-    return True
+
+    # Initialize estimate and backup original costs
+    for tsk in taskset:
+        tsk.response_time_estimate = None
+        tsk.uninflated_cost = tsk.cost
+
+    # Is it schedulable ? (considering `blocked` term)
+    # Computes new `response_time`
+    while all_partitions_are_schedulable(taskset):
+
+        # Did we converge ?
+        if not has_new_response_times(taskset):
+            return True
+
+        # Restore costs
+        # And store new response_time_estimate
+        for tsk in taskset:
+            tsk.cost = tsk.uninflated_cost
+            tsk.response_time_estimate = tsk.response_time
+
+        # Uses the response_time to compute the blocked term
+        # May change exec costs
+        lock.apply_bounds(taskset)
+
+
+    # Some partition is not schedulable anymore
+    return False

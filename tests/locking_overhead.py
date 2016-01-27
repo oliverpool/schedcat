@@ -8,47 +8,10 @@ import schedcat.overheads.simple_locking as simple_locking
 import schedcat.locking.bounds as bounds
 import schedcat.locking.model as lmodel
 
-
-class LockingWithOverhead(unittest.TestCase):
-    def setUp(self):
-        """
-        Initilize a dict of SpinLocks with different overheads.
-        """
-        self.lock = {
-            'optimispinlock': lmodel.Unordered(79),
-            'spinlock': lmodel.Unordered(118),
-            'mcslock': lmodel.Fifo(148),
-            'ticketlock': lmodel.Fifo(179),
-            'prioritylock': lmodel.Priority_Unordered(193),
-        }
-
-    def binary_test_function(self, period):
-        """
-        Test if the generated Taskset of a given period is schedulable.
-
-        Uses the rta analysis.
-        """
-        taskset = generate_taskset(period)
-        return simple_locking.is_schedulable(taskset)
-
-    def test_schedulability(self):
-        results = []
-        for name, lock in self.lock.iteritems():
-            simple_locking.default_spinlock = lock
-            best_period = binary_search(self.binary_test_function)
-            results.append( (name, best_period) )
-
-        # Display the results (debugging)
-        results = sorted(results, key=lambda (_,x):x)
-        for name, score in results:
-            print(name + ': ' + str(score))
-
-
-def generate_taskset(period):
+def generate_taskset(period, duration, cs_duration, cs_number):
     """
     Generate a Taskset with a given period for every task
     """
-    duration = 500
     ts = tasks.TaskSystem([
         tasks.SporadicTask(duration, period),
         tasks.SporadicTask(duration, period),
@@ -59,11 +22,12 @@ def generate_taskset(period):
     # Assumes taskset has already been sorted and ID'd in priority order.
     bounds.assign_fp_preemption_levels(ts)
 
+    ts[0].resmodel[0].add_request(cs_duration // 2)
     # tasks resource duration
-    for _ in range(10):
-        ts[0].resmodel[0].add_request(50)
-    ts[1].resmodel[0].add_request(50)
-    ts[2].resmodel[0].add_request(50)
+    for _ in range(cs_number):
+        ts[0].resmodel[0].add_request(cs_duration)
+        ts[1].resmodel[0].add_request(cs_duration)
+        ts[2].resmodel[0].add_request(cs_duration)
 
     # Set one task per partition (and one partition per core)
     for i, t in enumerate(ts):
@@ -71,17 +35,35 @@ def generate_taskset(period):
         t.response_time = t.period
     return ts
 
-def binary_search(test_function, lo=1, hi=100000):
-    """
-    Compute the smallest value satisfying the test_function
+class LockingWithOverhead(unittest.TestCase):
+    def setUp(self):
+        """
+        Initilize a dict of SpinLocks with different overheads.
+        """
+        self.lock = {
+            'unordered': lmodel.Unordered(10),
+            'fifo': lmodel.Fifo(20),
+            'prio': lmodel.Priority_Unordered(30),
+            'priofifo': lmodel.Priority_Fifo(40),
+        }
 
-    It uses a binary search approach.
-    Search between lo and hi values.
-    """
-    while lo < hi:
-        mid = (lo+hi)//2
-        if not test_function(mid):
-            lo = mid+1
-        else:
-            hi = mid
-    return lo
+    def test_schedulability(self):
+        period = 15000
+        duration = 5000
+        cs_duration = 1000
+        cs_number = 1
+        taskset = generate_taskset(period, duration, cs_duration, cs_number)
+        self.assertTrue(simple_locking.is_schedulable(taskset))
+
+
+
+        duration = 6000
+        cs_duration = 2000
+        # Depending on the lock, the taskset is schedulable or not
+        simple_locking.default_spinlock = self.lock['unordered']
+        taskset = generate_taskset(period, duration, cs_duration, cs_number)
+        self.assertFalse(simple_locking.is_schedulable(taskset))
+
+        simple_locking.default_spinlock = self.lock['fifo']
+        taskset = generate_taskset(period, duration, cs_duration, cs_number)
+        self.assertTrue(simple_locking.is_schedulable(taskset))
