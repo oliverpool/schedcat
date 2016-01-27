@@ -72,7 +72,7 @@ def is_schedulable(taskset, lock=None):
     """
     if lock is None:
         lock = default_spinlock
-    taskset = charge_spinlock_overheads(taskset)
+    charge_spinlock_overheads(taskset)
 
     # Initialize estimate and backup original costs
     for tsk in taskset:
