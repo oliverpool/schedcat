@@ -29,7 +29,7 @@ suite = unittest.TestSuite(
       tests.fp,
       tests.binpack,
       tests.locking,
-      tests.locking_overhead,
+      #tests.locking_overhead, # Neead about 25 seconds!
       tests.global_locking_analysis,
       tests.sim,
       tests.overheads,

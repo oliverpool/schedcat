@@ -58,9 +58,9 @@ def all_partitions_are_schedulable(taskset):
     return True
 
 def has_new_response_times(taskset):
-    """ Does any response_time differs from the response_time_estimate? """
+    """ Does any response_time differs from the previous_response_time? """
     for tsk in taskset:
-        if tsk.response_time_estimate != tsk.response_time:
+        if tsk.previous_response_time != tsk.response_time:
             return True
     return False
 
@@ -72,11 +72,13 @@ def is_schedulable(taskset, lock=None):
     """
     if lock is None:
         lock = default_spinlock
+
+    # Increase the cost and critical section durations
     charge_spinlock_overheads(taskset)
 
     # Initialize estimate and backup original costs
     for tsk in taskset:
-        tsk.response_time_estimate = None
+        tsk.previous_response_time = None
         tsk.uninflated_cost = tsk.cost
 
     # Is it schedulable ? (considering `blocked` term)
@@ -88,10 +90,10 @@ def is_schedulable(taskset, lock=None):
             return True
 
         # Restore costs
-        # And store new response_time_estimate
+        # And store new previous_response_time
         for tsk in taskset:
             tsk.cost = tsk.uninflated_cost
-            tsk.response_time_estimate = tsk.response_time
+            tsk.previous_response_time = tsk.response_time
 
         # Uses the response_time to compute the blocked term
         # May change exec costs
